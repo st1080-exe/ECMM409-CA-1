@@ -10,13 +10,75 @@ import random
 import numpy as np
 import pygad as pg
 
+#global vars
 capacity = 0
 ids = 0
 bags = 0
-termination = 20
-currentRun = 0
-bestSolution = 0
-populationNumber = 15
+
+# run determining vars
+termination = 10000
+populationNumber = 20
+
+#main
+def main():
+
+    global capacity
+    global bags
+
+    #opens data set
+    capacity, bags = convertData(open("BankProblem.txt").read())
+
+    #generates initial population
+    firstPopulationF = populationGen(bags, populationNumber)
+    firstPopulationM = populationGen(bags, populationNumber)
+
+    #runs algorithm
+    geneticAlgorithm(firstPopulationF, firstPopulationM)
+
+# genetic algorithm loop
+def geneticAlgorithm(genF, genM):
+
+    # gets best ever to arbitrary solution
+    bestEver = genF[0]
+
+    # main algorithm loop
+    for i in range(termination):
+
+        # runs selection algorithm on parents
+        parentF = selection(evalFunction(genF), genF, 10)
+        parentM = selection(evalFunction(genM), genM, 10)
+
+        newGenF, newGenM  = [], []
+
+        # while the population isnt complete
+        while len(newGenF) < populationNumber:
+
+            # shuffles parents
+            random.shuffle(parentF)
+            random.shuffle(parentM)
+
+            #performs crossover
+            cross1, cross2 = crossover(parentF, parentM)
+
+            newGenF += cross1
+            newGenM += cross2
+
+        # performs mutation
+        genF = mutate(prune(newGenF[:populationNumber]), 5)
+        genM = mutate(prune(newGenM[:populationNumber]), 5)
+
+        #finds best parent from current solution
+        genF[0] = list(max(parentF, key=value))
+        genM[0] = list(max(parentM, key=value))
+        candidate = max(genF + genM, key=value)
+
+        # replaces best ever if the score is better
+        if value(candidate) > value(bestEver):
+            bestEver = list(candidate)
+
+    # returns result
+    print(value(bestEver), sum(bags[i - 1][1] for i in bestEver))
+    return bestEver
 
 #data conversion into workable format
 #code generated using claude ai
@@ -35,39 +97,10 @@ def convertData(data):
     bags = np.zeros(len(ids), dtype=[("id", int), ("weight", float), ("value", int)])
     bags["id"], bags["weight"], bags["value"] = ids, weights, values
 
-    return vanCapacity, bags
+    return vanCapacity, bags            #generated code end
 
-#main
-def main():
-
-    global capacity
-    global bags
-
-    capacity, bags = convertData(open("BankProblem.txt").read())
-
-    firstPopulationF = populationGen(bags, populationNumber)
-    firstPopulationM = populationGen(bags, populationNumber)
-
-    geneticAlgorithm(firstPopulationF, firstPopulationM)
-
-
-def geneticAlgorithm(currentGenF, currentGenM):
-
-    fitnessF = evalFunction(currentGenF)
-    parentF = selection(fitnessF, currentGenF, 7)
-
-    fitnessM = evalFunction(currentGenM)
-    parentM = selection(fitnessM, currentGenM, 7)
-
-    newGenF, newGenM  = crossover(parentF, parentM)
-
-    newGenF = mutate(newGenF)
-    newGenM = mutate(newGenM)
-
-    newGenF = repair(newGenF, populationNumber)
-    newGenM = repair(newGenM, populationNumber)
-
-
+def value(s):
+    return sum(bags[i - 1][2] for i in s)
 
 
 #populates first generation
@@ -122,74 +155,90 @@ def evalFunction(generation):
 #selects parents
 def selection(fitness, data, numOfRuns):
 
-    #sums up the total fitness score
-    total = 0
-    
-    for i in range(len(fitness)):
-        total += fitness[i][1]
+    n = len(fitness)
+    numOfRuns = min(numOfRuns, n)
+    available = list(range(n))
+    selected = []
 
-    selection = []
-    i = 0
-    while i < numOfRuns:
-
-        #generates a random number
-        num = random.uniform(0,total)
+    for _ in range(numOfRuns):
+        total = sum(pos + 1 for pos in available)
+        num = random.uniform(0, total)
 
         runTime = 0
-
-        candidate = 0
-
-        #gradually moves up until the total reaches the random number
-        for j in range(len(fitness)):
-
+        candidate = available[-1]
+        for pos in available:
+            runTime += pos + 1
             if runTime >= num:
-                candidate = j
+                candidate = pos
                 break
-            
-            runTime += fitness[j][1]
 
-        if candidate not in selection:
-            selection.append(data[candidate])
-            i += 1
+        available.remove(candidate)
+        selected.append(data[fitness[candidate][0]])
 
-    return selection
+    return selected
 
 def crossover(mother, father):
 
-    cutoff = random.randint(1,len(mother)-1)
-    child1 = mother[:cutoff]
-    child2 = father[:cutoff]
+    child1 = []
+    child2 = []
 
-    for i in range(len(mother) - cutoff):
-        child1.append(father[-i-1])
-        child2.append(mother[-i-1])
+    for i in range(len(mother)):
 
-    prune(child1)
-    prune(child2)
+        cutOff = random.randint(1,(len(mother[i])))
+
+        kid1Sol = mother[i][:cutOff] + father[i][cutOff:]
+        kid2Sol = father[i][:cutOff] + mother[i][cutOff:]
+
+        child1.append(fixSol(kid1Sol))
+        child2.append(fixSol(kid2Sol))
+
     return child1, child2
 
+def fixSol(solution):
+
+    # the following section was generated by claude ai
+
+    solution = list(dict.fromkeys(solution))
+    weight = sum(bags[i - 1][1] for i in solution)
+
+    while weight > capacity:
+        worst = min(solution, key=lambda i: bags[i - 1][2] / bags[i - 1][1])
+        solution.remove(worst)
+        weight -= bags[worst -1][1]
+
+    unused = [int(b[0]) for b in bags if int(b[0]) not in solution]
+    random.shuffle(unused)
+    for i in unused:
+        if weight + bags[i - 1][1] <= capacity:
+            solution.append(i)
+            weight += bags[i - 1][1]
+
+    return solution         #generated code end
+
+
 def prune(listOg):
+
     length = len(listOg)
     prunedList = []
+
     for i in range(length):
+
         if listOg[i] not in prunedList:
             prunedList.append(listOg[i])
 
     if len(prunedList) != length:
         prunedList.append(populate(bags))
 
+    return prunedList
+
 def mutate(generation, rate):
 
-    if random.random() < rate:
-        generation.remove(random.choice(generation))
-        generation.append(populate(bags))
+    for i in range(len(generation)):
 
-    return generation
+        if generation[i] and random.randrange(0, 100) < rate:
 
-def repair(generation, popNum):
-
-    while len(generation) < popNum:
-        generation.append(populate(bags))
+            generation[i].remove(random.choice(generation[i]))
+            generation[i] = fixSol(generation[i])
 
     return generation
 
